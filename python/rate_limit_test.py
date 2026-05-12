@@ -17,7 +17,7 @@ from loguru import logger
 # 配置日志
 logger.remove()
 logger.add(sys.stderr, level="INFO", format="<green>{time:HH:mm:ss}</green> | <level>{message}</level>")
-logger.add("logs/rate_limit_test_{time:YYYY-MM-DD}.log", level="DEBUG", rotation="10 MB", encoding="utf-8")
+logger.add("../logs/rate_limit_test_{time:YYYY-MM-DD}.log", level="DEBUG", rotation="10 MB", encoding="utf-8")
 
 # ========== 基本配置 ==========
 MY_API_KEY = os.getenv("MY_API_KEY")

@@ -13,6 +13,7 @@ logs/
 
 # Environment variables
 .env
+python/.env
 
 # OS
 .DS_Store

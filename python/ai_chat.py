@@ -29,7 +29,7 @@ console = Console()
 # 配置 loguru 日志输出
 logger.remove()
 logger.add(sys.stderr, level="INFO", format="<green>{time:HH:mm:ss}</green> | <level>{message}</level>")
-logger.add("logs/ai_chat_{time:YYYY-MM-DD}.log", level="DEBUG", rotation="10 MB", encoding="utf-8")
+logger.add("../logs/ai_chat_{time:YYYY-MM-DD}.log", level="DEBUG", rotation="10 MB", encoding="utf-8")
 
 
 # ========== 速率限制器 ==========
