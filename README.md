@@ -18,8 +18,12 @@ csu_ai_api/
 ├── java/                # Java 客户端和测试
 │   ├── src/main/java/com/csu/ai/
 │   │   ├── TestRunner.java    # 测试入口
+│   │   ├── TestOpenAI.java    # OpenAI Java SDK 测试
 │   │   ├── TestHttp.java      # OkHttp HTTP 测试
 │   │   └── TestLangChain4j.java # LangChain4j 测试
+│   ├── .mvn/
+│   │   ├── settings.xml       # Maven 阿里云镜像配置
+│   │   └── wrapper/           # Maven Wrapper
 │   ├── pom.xml
 │   └── .env
 ├── logs/                # 日志目录
@@ -102,11 +106,14 @@ mvn compile exec:java
 
 | SDK / API | 调用方式 | 连通性 | 备注 |
 |---|---|---|---|
+| OpenAI SDK Models List | `client.models().list()` | ✅ | 7 个可用模型 |
+| OpenAI SDK invoke() | `client.chat().completions().create()` | ✅ | ~2.7s |
+| OpenAI SDK stream() | `client.chat().completions().createStreaming()` | ✅ | TTFT ~5.0s |
 | OkHttp Models List | `GET /models` | ✅ | 7 个可用模型 |
-| OkHttp Chat (非流式) | `POST /chat/completions` | ✅ | ~0.88s |
-| OkHttp Chat (流式) | `POST /chat/completions` (SSE) | ✅ | TTFT ~0.87s |
-| LangChain4j invoke() | `ChatLanguageModel.chat()` | ✅ | ~1.33s |
-| LangChain4j stream() | `StreamingChatLanguageModel.chat()` | ✅ | TTFT ~1.03s |
+| OkHttp Chat (非流式) | `POST /chat/completions` | ✅ | ~0.9s |
+| OkHttp Chat (流式) | `POST /chat/completions` (SSE) | ✅ | TTFT ~0.66s |
+| LangChain4j invoke() | `ChatLanguageModel.chat()` | ✅ | ~1.2s |
+| LangChain4j stream() | `StreamingChatLanguageModel.chat()` | ✅ | TTFT ~1.5s |
 
 **结论：** CSU 校内 API 仅支持 **OpenAI 兼容协议**（Chat Completions 和 Responses API 均可），不支持 Anthropic SDK 原生调用。Python 和 Java 均可正常连通。
 
