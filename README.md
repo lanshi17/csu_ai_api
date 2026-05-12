@@ -27,6 +27,27 @@ csu_ai_api/
 │   │   └── wrapper/           # Maven Wrapper
 │   ├── pom.xml
 │   └── .env
+├── go/                  # Go 客户端和测试
+│   ├── main.go              # 测试入口
+│   ├── config.go            # 配置加载
+│   ├── openai_client.go     # OpenAI Go SDK (Chat Completions)
+│   ├── responses_client.go  # OpenAI Go SDK (Responses API)
+│   ├── http_client.go       # 原生 net/http 测试
+│   ├── go.mod / go.sum
+│   └── .env.example
+├── cpp/                 # C++ 客户端和测试
+│   ├── CMakeLists.txt       # CMake 构建配置
+│   ├── main.cpp             # 测试入口
+│   ├── config.h / config.cpp # 配置加载
+│   ├── http_client.h / http_client.cpp # libcurl HTTP 客户端
+│   └── .env.example
+├── rust/                # Rust 客户端和测试
+│   ├── Cargo.toml           # 依赖管理
+│   ├── src/
+│   │   ├── main.rs          # 测试入口
+│   │   ├── config.rs        # 配置加载
+│   │   └── http_client.rs   # reqwest HTTP 客户端
+│   └── .env.example
 ├── logs/                # 日志目录
 └── README.md
 ```
@@ -86,6 +107,38 @@ cd java
 mvn compile exec:java
 ```
 
+## Go
+
+### 运行
+
+```bash
+cd go
+cp .env.example .env   # 编辑填入 API_KEY
+go run .
+```
+
+## C++
+
+### 构建 & 运行
+
+```bash
+cd cpp
+cp .env.example .env   # 编辑填入 API_KEY
+cmake -B build
+cmake --build build
+./build/csu_ai_test
+```
+
+## Rust
+
+### 运行
+
+```bash
+cd rust
+cp .env.example .env   # 编辑填入 API_KEY
+cargo run
+```
+
 ## API 连通性测试结果
 
 > 测试日期：2026-05-12  
@@ -118,7 +171,36 @@ mvn compile exec:java
 | LangChain4j invoke() | `ChatLanguageModel.chat()` | ✅ | ~1.6s |
 | LangChain4j stream() | `StreamingChatLanguageModel.chat()` | ✅ | TTFT ~1.3s |
 
-**结论：** CSU 校内 API 仅支持 **OpenAI 兼容协议**（Chat Completions 和 Responses API 均可），不支持 Anthropic SDK 原生调用。Python 和 Java 均可正常连通。
+### Go
+
+| SDK / API | 调用方式 | 连通性 | 备注 |
+|---|---|---|---|
+| OpenAI SDK Models List | `client.Models.List()` | ✅ | 7 个可用模型 |
+| OpenAI SDK invoke() | `client.Chat.Completions.New()` | ✅ | ~0.67s |
+| OpenAI SDK stream() | `client.Chat.Completions.NewStreaming()` | ✅ | TTFT ~0.71s |
+| OpenAI SDK Responses invoke() | `client.Responses.New()` | ✅ | ~0.69s |
+| OpenAI SDK Responses stream() | `client.Responses.NewStreaming()` | ✅ | TTFT ~0.81s |
+| HTTP Models List | `GET /models` | ✅ | 7 个可用模型 |
+| HTTP Chat (非流式) | `POST /chat/completions` | ✅ | ~0.59s |
+| HTTP Chat (流式) | `POST /chat/completions` (SSE) | ✅ | TTFT ~0.89s |
+
+### C++
+
+| SDK / API | 调用方式 | 连通性 | 备注 |
+|---|---|---|---|
+| HTTP Models List | `GET /models` (libcurl) | ✅ | 7 个可用模型 |
+| HTTP Chat (非流式) | `POST /chat/completions` | ✅ | ~5.1s |
+| HTTP Chat (流式) | `POST /chat/completions` (SSE) | ✅ | TTFT ~0.76s |
+
+### Rust
+
+| SDK / API | 调用方式 | 连通性 | 备注 |
+|---|---|---|---|
+| HTTP Models List | `GET /models` (reqwest) | ✅ | 7 个可用模型 |
+| HTTP Chat (非流式) | `POST /chat/completions` | ✅ | ~0.81s |
+| HTTP Chat (流式) | `POST /chat/completions` (SSE) | ✅ | TTFT ~0.71s |
+
+**结论：** CSU 校内 API 仅支持 **OpenAI 兼容协议**（Chat Completions 和 Responses API 均可），不支持 Anthropic SDK 原生调用。Python、Java、Go、C++、Rust 五种语言均可正常连通。
 
 ## 特性
 
