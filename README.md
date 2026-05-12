@@ -8,9 +8,11 @@
 csu_ai_api/
 ├── python/              # Python 客户端和测试
 │   ├── ai_chat.py       # 对话模式客户端
-│   ├── test_api.py      # OpenAI 连通性测试
+│   ├── test_api.py      # OpenAI SDK 连通性测试
 │   ├── test_responses.py # OpenAI Responses API 测试
 │   ├── test_anthropic.py # Anthropic SDK 测试
+│   ├── test_requests.py  # requests 库 HTTP 测试
+│   ├── test_langgraph.py # LangGraph + LangChain 测试
 │   ├── rate_limit_test.py # 速率限制压测
 │   └── .env.example     # 环境变量模板
 ├── logs/                # 日志目录
@@ -73,6 +75,9 @@ uv run rate_limit_test.py --mode single_test --requests 20 --workers 20
 |---|---|---|
 | OpenAI Chat Completions | `client.chat.completions.create()` | ✅ |
 | OpenAI Responses | `client.responses.create()` | ✅ |
+| requests (HTTP) | `requests.post("/chat/completions")` | ✅ |
+| LangChain-OpenAI | `ChatOpenAI.invoke()` / `.stream()` | ✅ |
+| LangGraph | `StateGraph` + `ChatOpenAI` | ✅ |
 | Anthropic Messages | `client.messages.create()` | ❌ 401 |
 
 **结论：** CSU 校内 API 仅支持 **OpenAI 兼容协议**（Chat Completions 和 Responses API 均可），不支持 Anthropic SDK 原生调用。
