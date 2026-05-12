@@ -14,6 +14,10 @@ logs/
 # Environment variables
 .env
 python/.env
+java/.env
+
+# Java / Maven
+java/target/
 
 # OS
 .DS_Store

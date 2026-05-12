@@ -1,0 +1,28 @@
+#!/bin/sh
+# Maven Wrapper Script
+
+# Resolve links
+PRG="$0"
+while [ -h "$PRG" ] ; do
+    ls=`ls -ld "$PRG"`
+    link=`expr "$ls" : '.*-> \(.*\)$'`
+    if expr "$link" : '/.*' > /dev/null; then
+        PRG="$link"
+    else
+        PRG=`dirname "$PRG"`"/$link"
+    fi
+done
+SAVED="`pwd`"
+cd "`dirname \"$PRG\"`/" >/dev/null
+MAVEN_PROJECTBASEDIR="`pwd -P`"
+cd "$SAVED" >/dev/null
+
+WRAPPER_JAR="$MAVEN_PROJECTBASEDIR/.mvn/wrapper/maven-wrapper.jar"
+
+JAVA_HOME="${JAVA_HOME:-}"
+JAVACMD=java
+if [ -n "$JAVA_HOME" ] ; then
+    JAVACMD="$JAVA_HOME/bin/java"
+fi
+
+exec "$JAVACMD" -jar "$WRAPPER_JAR" "$@"

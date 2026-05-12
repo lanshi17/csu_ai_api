@@ -15,6 +15,13 @@ csu_ai_api/
 │   ├── test_langgraph.py # LangGraph + LangChain 测试
 │   ├── rate_limit_test.py # 速率限制压测
 │   └── .env.example     # 环境变量模板
+├── java/                # Java 客户端和测试
+│   ├── src/main/java/com/csu/ai/
+│   │   ├── TestRunner.java    # 测试入口
+│   │   ├── TestHttp.java      # OkHttp HTTP 测试
+│   │   └── TestLangChain4j.java # LangChain4j 测试
+│   ├── pom.xml
+│   └── .env
 ├── logs/                # 日志目录
 └── README.md
 ```
@@ -65,6 +72,15 @@ uv run rate_limit_test.py --mode fixed_qps --rps 5 --duration 60
 uv run rate_limit_test.py --mode single_test --requests 20 --workers 20
 ```
 
+## Java
+
+### 运行
+
+```bash
+cd java
+mvn compile exec:java
+```
+
 ## API 连通性测试结果
 
 > 测试日期：2026-05-12  
@@ -73,12 +89,16 @@ uv run rate_limit_test.py --mode single_test --requests 20 --workers 20
 
 | SDK / API | 调用方式 | 连通性 |
 |---|---|---|
+| **Python** | | |
 | OpenAI Chat Completions | `client.chat.completions.create()` | ✅ |
 | OpenAI Responses | `client.responses.create()` | ✅ |
 | requests (HTTP) | `requests.post("/chat/completions")` | ✅ |
 | LangChain-OpenAI | `ChatOpenAI.invoke()` / `.stream()` | ✅ |
 | LangGraph | `StateGraph` + `ChatOpenAI` | ✅ |
 | Anthropic Messages | `client.messages.create()` | ❌ 401 |
+| **Java** | | |
+| OkHttp (HTTP) | `POST /chat/completions` (流式/非流式) | ✅ |
+| LangChain4j | `ChatLanguageModel.chat()` / `StreamingChatLanguageModel.chat()` | ✅ |
 
 **结论：** CSU 校内 API 仅支持 **OpenAI 兼容协议**（Chat Completions 和 Responses API 均可），不支持 Anthropic SDK 原生调用。
 
