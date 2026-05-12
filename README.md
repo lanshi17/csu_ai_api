@@ -87,20 +87,28 @@ mvn compile exec:java
 > 测试环境：CSU 校内 API (`api.chat.csu.edu.cn/v1`)  
 > 模型：`DeepSeek-V4-Flash`
 
-| SDK / API | 调用方式 | 连通性 |
-|---|---|---|
-| **Python** | | |
-| OpenAI Chat Completions | `client.chat.completions.create()` | ✅ |
-| OpenAI Responses | `client.responses.create()` | ✅ |
-| requests (HTTP) | `requests.post("/chat/completions")` | ✅ |
-| LangChain-OpenAI | `ChatOpenAI.invoke()` / `.stream()` | ✅ |
-| LangGraph | `StateGraph` + `ChatOpenAI` | ✅ |
-| Anthropic Messages | `client.messages.create()` | ❌ 401 |
-| **Java** | | |
-| OkHttp (HTTP) | `POST /chat/completions` (流式/非流式) | ✅ |
-| LangChain4j | `ChatLanguageModel.chat()` / `StreamingChatLanguageModel.chat()` | ✅ |
+### Python
 
-**结论：** CSU 校内 API 仅支持 **OpenAI 兼容协议**（Chat Completions 和 Responses API 均可），不支持 Anthropic SDK 原生调用。
+| SDK / API | 调用方式 | 连通性 | 备注 |
+|---|---|---|---|
+| OpenAI Chat Completions | `client.chat.completions.create()` | ✅ | 流式/非流式均支持 |
+| OpenAI Responses | `client.responses.create()` | ✅ | - |
+| requests (HTTP) | `requests.post("/chat/completions")` | ✅ | 流式/非流式/模型列表 |
+| LangChain-OpenAI | `ChatOpenAI.invoke()` / `.stream()` | ✅ | TTFT ~0.8s |
+| LangGraph | `StateGraph` + `ChatOpenAI` | ✅ | ~0.8s |
+| Anthropic Messages | `client.messages.create()` | ❌ 401 | CSU API 不支持 Anthropic 协议 |
+
+### Java
+
+| SDK / API | 调用方式 | 连通性 | 备注 |
+|---|---|---|---|
+| OkHttp Models List | `GET /models` | ✅ | 7 个可用模型 |
+| OkHttp Chat (非流式) | `POST /chat/completions` | ✅ | ~0.88s |
+| OkHttp Chat (流式) | `POST /chat/completions` (SSE) | ✅ | TTFT ~0.87s |
+| LangChain4j invoke() | `ChatLanguageModel.chat()` | ✅ | ~1.33s |
+| LangChain4j stream() | `StreamingChatLanguageModel.chat()` | ✅ | TTFT ~1.03s |
+
+**结论：** CSU 校内 API 仅支持 **OpenAI 兼容协议**（Chat Completions 和 Responses API 均可），不支持 Anthropic SDK 原生调用。Python 和 Java 均可正常连通。
 
 ## 特性
 
