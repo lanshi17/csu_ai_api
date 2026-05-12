@@ -23,6 +23,11 @@ public class TestRunner {
         results.put("OpenAI SDK invoke()", testOpenAI.testInvoke());
         results.put("OpenAI SDK stream()", testOpenAI.testStream());
 
+        // OpenAI SDK Responses API 测试
+        TestResponses testResponses = new TestResponses(config);
+        results.put("OpenAI SDK Responses invoke()", testResponses.testInvoke());
+        results.put("OpenAI SDK Responses stream()", testResponses.testStream());
+
         // OkHttp 原生 HTTP 测试
         TestHttp testHttp = new TestHttp(config);
         results.put("OkHttp Models List", testHttp.testModelsList());
