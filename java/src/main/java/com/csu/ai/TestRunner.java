@@ -10,12 +10,18 @@ public class TestRunner {
     public static void main(String[] args) {
         Config config = Config.load();
 
-        System.out.println("SDK:      Java (OkHttp / LangChain4j)");
+        System.out.println("SDK:      Java (OpenAI SDK / OkHttp / LangChain4j)");
         System.out.println("Base URL: " + config.baseUrl);
         System.out.println("API Key:  " + config.apiKey.substring(0, 12) + "...");
         System.out.println("Model:    " + config.model);
 
         Map<String, Boolean> results = new LinkedHashMap<>();
+
+        // OpenAI SDK 测试
+        TestOpenAI testOpenAI = new TestOpenAI(config);
+        results.put("OpenAI SDK Models List", testOpenAI.testModelsList());
+        results.put("OpenAI SDK invoke()", testOpenAI.testInvoke());
+        results.put("OpenAI SDK stream()", testOpenAI.testStream());
 
         // OkHttp 原生 HTTP 测试
         TestHttp testHttp = new TestHttp(config);
