@@ -16,12 +16,12 @@ uv sync
 cp .env.example .env
 ```
 
-或直接设置环境变量：
+编辑 `.env` 文件，填入你的 API Key：
 
-```bash
-export MY_API_KEY="your-api-key"
-export MY_API_BASE="https://api.chat.csu.edu.cn/v1"  # 可选
-export MY_MODEL="DeepSeek-V4-Flash"                   # 可选
+```env
+API_KEY=your-api-key-here
+API_BASE_URL=https://api.chat.csu.edu.cn/v1
+MODEL_NAME=DeepSeek-V4-Flash
 ```
 
 ## 使用
@@ -29,10 +29,24 @@ export MY_MODEL="DeepSeek-V4-Flash"                   # 可选
 ### 对话模式
 
 ```bash
-uv run csu_ai_test.py
+uv run ai_chat.py
 ```
 
 支持多轮对话，输入 `/exit` 退出。
+
+## API 连通性测试结果
+
+> 测试日期：2026-05-12  
+> 测试环境：CSU 校内 API (`api.chat.csu.edu.cn/v1`)  
+> 模型：`DeepSeek-V4-Flash`
+
+| SDK / API | 调用方式 | 连通性 |
+|---|---|---|
+| OpenAI Chat Completions | `client.chat.completions.create()` | ✅ |
+| OpenAI Responses | `client.responses.create()` | ✅ |
+| Anthropic Messages | `client.messages.create()` | ❌ 401 |
+
+**结论：** CSU 校内 API 仅支持 **OpenAI 兼容协议**（Chat Completions 和 Responses API 均可），不支持 Anthropic SDK 原生调用。
 
 ### 速率限制压测
 
