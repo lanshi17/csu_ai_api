@@ -13,6 +13,7 @@ csu_ai_api/
 │   ├── test_anthropic.py # Anthropic SDK 测试
 │   ├── test_requests.py  # requests 库 HTTP 测试
 │   ├── test_langgraph.py # LangGraph + LangChain 测试
+│   ├── test_json_mode.py # JSON mode + 结构化输出测试
 │   ├── rate_limit_test.py # 速率限制压测
 │   └── .env.example     # 环境变量模板
 ├── java/                # Java 客户端和测试
