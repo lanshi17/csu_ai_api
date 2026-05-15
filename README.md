@@ -155,6 +155,10 @@ cargo run
 | requests (HTTP) | `requests.post("/chat/completions")` | ✅ | 流式/非流式/模型列表 |
 | LangChain-OpenAI | `ChatOpenAI.invoke()` / `.stream()` | ✅ | TTFT ~0.8s |
 | LangGraph | `StateGraph` + `ChatOpenAI` | ✅ | ~0.8s |
+| OpenAI JSON mode | `response_format={"type": "json_object"}` | ✅ | ~0.5s |
+| OpenAI JSON Schema | `response_format={"type": "json_schema", ...}` | ✅ | strict 模式支持 |
+| LangChain 结构化输出 | `llm.with_structured_output(Schema)` | ✅ | 直接返回 Pydantic 对象 |
+| LangGraph 结构化输出 | `StateGraph` + `with_structured_output` | ✅ | 需手动转 AIMessage |
 | Anthropic Messages | `client.messages.create()` | ❌ 401 | CSU API 不支持 Anthropic 协议 |
 
 ### Java
