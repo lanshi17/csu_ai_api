@@ -1,11 +1,38 @@
 # CSU AI API 客户端
 
+[![CI](https://github.com/lanshi17/csu_ai_api/actions/workflows/ci.yml/badge.svg)](https://github.com/lanshi17/csu_ai_api/actions/workflows/ci.yml)
+[![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](python/pyproject.toml)
+[![OpenAI Compatible](https://img.shields.io/badge/API-OpenAI%20compatible-2ea44f)](docs/api-surface.md)
+
 中南大学校内 AI API 客户端工具，支持流式对话、多维度基准测试和速率限制压测。
+覆盖 Python、Java、Go、C++、Rust 五种语言，所有测试仅依赖 OpenAI 兼容协议。
+
+## 快速开始
+
+```bash
+git clone git@github.com:lanshi17/csu_ai_api.git
+cd csu_ai_api
+cp .env.example python/.env        # 填入 API_KEY
+
+cd python
+uv sync
+uv run benchmark.py --list
+uv run benchmark.py --suite smoke --repeat 1 --warmup 0 --min-interval 6.5
+```
+
+> 服务仅校园网可达；网关持续速率约 10 次/分钟，批量运行请加 `--min-interval`。
 
 ## 目录结构
 
 ```
 csu_ai_api/
+├── .github/workflows/ci.yml # Python 测试 + 四语言构建
+├── .editorconfig        # 编辑器基础规范
+├── .env.example         # 统一环境变量模板（复制到各语言目录为 .env）
+├── CONTRIBUTING.md      # 贡献指南
+├── SECURITY.md          # 密钥与漏洞报告策略
+├── CHANGELOG.md         # 变更记录
+├── Makefile             # 测试/构建快捷命令
 ├── python/              # Python 客户端和测试
 │   ├── ai_chat.py       # 对话模式客户端
 │   ├── test_api.py      # OpenAI SDK 连通性测试
@@ -31,8 +58,7 @@ csu_ai_api/
 │   ├── .mvn/
 │   │   ├── settings.xml       # Maven 阿里云镜像配置
 │   │   └── wrapper/           # Maven Wrapper
-│   ├── pom.xml
-│   └── .env
+│   └── pom.xml
 ├── go/                  # Go 客户端和测试
 │   ├── main.go              # 测试入口
 │   ├── config.go            # 配置加载
@@ -51,12 +77,39 @@ csu_ai_api/
 │   │   ├── main.rs          # 测试入口
 │   │   ├── config.rs        # 配置加载
 │   │   └── http_client.rs   # reqwest HTTP 客户端
-├── .env.example         # 统一环境变量模板（复制到各语言目录为 .env）
-├── docs/                # 基准报告归档
+├── docs/                # 基准报告与接口文档
+│   ├── api-surface.md   # 实测端点、字段与限流行为
 │   └── benchmark-2026-11-13.md
 ├── logs/                # 日志目录
 └── README.md
 ```
+
+## API 兼容面
+
+| 能力 | 端点 | 状态 | 备注 |
+|---|---|---|---|
+| Chat Completions | `POST /chat/completions` | ✅ | 流式/非流式、thinking、JSON mode/schema |
+| Responses | `POST /responses` | ✅ | 简单输入与流式均通过 |
+| Embeddings | `POST /embeddings` | ✅ | `Embedding`，2560 维 |
+| Rerank | `POST /rerank` | ✅ | Jina 风格 `results[].relevance_score` |
+| Anthropic Messages | `POST /messages` | ❌ 401 | 不兼容 Anthropic 原生协议 |
+
+字段、错误体与限流细节见 [`docs/api-surface.md`](docs/api-surface.md)。
+
+## 配置
+
+| 变量 | 默认值 | 说明 |
+|---|---|---|
+| `API_KEY` | 无 | 必填，校内 API Key |
+| `API_BASE_URL` | `https://api.chat.csu.edu.cn/v1` | OpenAI 兼容基础地址 |
+| `MODEL_NAME` | `DeepSeek` | 默认 chat 模型 |
+| `REASONING_EFFORT` | `none` | `none` 关闭 thinking；`default` 使用服务端默认 |
+| `RATE_LIMIT_MAX` / `RATE_LIMIT_WINDOW` | `10` / `60` | 客户端滑动窗口限速 |
+| `SYSTEM_PROMPT` | 你是一个有问必答的AI助手。 | 对话系统提示词 |
+| `MAX_TOKENS` / `TEMPERATURE` | `1024` / `0.7` | 默认生成参数 |
+
+优先级：**进程环境变量 > 语言目录 `.env` > 仓库根目录 `.env`**。
+仓库只提交 `.env.example`；真实 `.env` 已被 `.gitignore` 忽略。
 
 ## Python
 
@@ -359,3 +412,44 @@ uv run python -m unittest discover -s tests -v
 - 自动重试（指数退避）
 - 性能指标（TTFT、生成速率）
 - 日志记录（loguru）
+
+## 故障排查
+
+| 现象 | 原因 | 处理 |
+|---|---|---|
+| `401 Invalid token` | Key 错误/过期，或不在校园网 | 检查 `API_KEY`；校外无法调用 |
+| `model_not_found` | 模型名不匹配 | 使用 `DeepSeek` / `GLM` / `Qwen` / `Embedding` / `Reranker` |
+| `429 Too Many Requests`（HTML） | 网关突发限流 | 加 `--min-interval 6.5`，降低并发 |
+| `content: null`，`finish_reason: "length"` | 推理 token 吃满预算 | 提高 `max_tokens` 或设 `reasoning_effort=none` |
+| 流式无 usage / TTFT 缺失 | 服务端不支持 `stream_options` | 基准会自动回退，token 指标记为 `null` |
+| Anthropic 调用 401 | 协议不兼容 | 使用 OpenAI 兼容 SDK |
+| C++ Release 段错误 | 旧版 `CURLINFO_RESPONSE_CODE` 写入 `int` | 已修复，重新编译 |
+| `IndexError: list index out of range` | SSE 末尾 usage chunk 的 `choices` 为空 | 已修复，拉取最新代码 |
+
+## 开发与 CI
+
+```bash
+make test-python    # 13 个离线测试（mock OpenAI 服务）
+make build-go       # Go 编译
+make build-rust     # Rust release 编译
+make build-cpp      # CMake 构建
+make build-java     # Maven 编译
+```
+
+CI 配置在 [`.github/workflows/ci.yml`](.github/workflows/ci.yml)：Python 单测 +
+Go / Rust / C++ / Java 构建，全部离线执行，不需要 Key。
+
+## 安全
+
+- 仓库只保留 `.env.example`，真实 `.env` 与 `.venv/`、构建产物均被忽略。
+- 提交前可扫描：`git diff --cached | grep -E 'sk-[A-Za-z0-9_-]{8,}'`。
+- 漏洞或密钥问题请走 GitHub Private Security Advisory，详见 [`SECURITY.md`](SECURITY.md)。
+
+## 相关文档
+
+- [接口实测细节](docs/api-surface.md)：模型、字段、错误体、限流
+- [三模型基准报告](docs/benchmark-2026-11-13.md)
+- [Python 基准与数据集说明](python/README.md)
+- [贡献指南](CONTRIBUTING.md)
+- [变更记录](CHANGELOG.md)
+- [安全策略](SECURITY.md)
