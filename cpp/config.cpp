@@ -6,9 +6,9 @@
 #include <string>
 
 // 简单的 .env 文件解析
-static void load_dotenv() {
-    std::ifstream file(".env");
-    if (!file.is_open()) return;
+static bool load_dotenv_file(const char* path) {
+    std::ifstream file(path);
+    if (!file.is_open()) return false;
 
     std::string line;
     while (std::getline(file, line)) {
@@ -31,10 +31,14 @@ static void load_dotenv() {
             setenv(key.c_str(), value.c_str(), 0);
         }
     }
+    return true;
 }
 
 Config Config::load() {
-    load_dotenv();
+    // 优先当前目录，其次仓库根目录
+    if (!load_dotenv_file(".env")) {
+        load_dotenv_file("../.env");
+    }
 
     const char* api_key = std::getenv("API_KEY");
     if (!api_key || std::string(api_key).empty()) {
@@ -48,6 +52,6 @@ Config Config::load() {
     return Config{
         api_key,
         base_url ? base_url : "https://api.chat.csu.edu.cn/v1",
-        model ? model : "DeepSeek-V4-Flash"
+        model ? model : "DeepSeek"
     };
 }

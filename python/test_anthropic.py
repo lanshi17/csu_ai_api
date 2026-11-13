@@ -7,12 +7,14 @@ import sys
 from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).parent / ".env")
+BASE_DIR = Path(__file__).parent
+load_dotenv(BASE_DIR / ".env")
+load_dotenv(BASE_DIR.parent / ".env")
 
 from anthropic import Anthropic
 
 api_key = os.getenv("API_KEY", "")
-model = os.getenv("MODEL_NAME", "DeepSeek-V4-Flash")
+model = os.getenv("MODEL_NAME", "DeepSeek")
 
 if not api_key:
     print("错误: API_KEY 未设置")

@@ -11,6 +11,14 @@ build/
 # Logs
 logs/
 
+# Benchmark outputs
+python/results/
+
+# Native build outputs
+rust/target/
+cpp/build*/
+go/csu_ai_test
+
 # Environment variables
 .env
 python/.env

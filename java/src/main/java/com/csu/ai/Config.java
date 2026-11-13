@@ -24,6 +24,14 @@ public class Config {
 
         String apiKey = dotenv.get("API_KEY");
         if (apiKey == null || apiKey.isEmpty()) {
+            // 回退到仓库根目录统一配置
+            dotenv = Dotenv.configure()
+                    .directory(System.getProperty("user.dir") + "/..")
+                    .ignoreIfMissing()
+                    .load();
+            apiKey = dotenv.get("API_KEY");
+        }
+        if (apiKey == null || apiKey.isEmpty()) {
             System.err.println("错误: 请设置 API_KEY 环境变量");
             System.exit(1);
         }
@@ -31,7 +39,7 @@ public class Config {
         return new Config(
                 apiKey,
                 dotenv.get("API_BASE_URL", "https://api.chat.csu.edu.cn/v1"),
-                dotenv.get("MODEL_NAME", "DeepSeek-V4-Flash")
+                dotenv.get("MODEL_NAME", "DeepSeek")
         );
     }
 }

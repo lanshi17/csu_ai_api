@@ -1,249 +1,378 @@
 #!/usr/bin/env python
 # coding=utf-8
-"""
-API 速率限制压测脚本
-用于测试供应商的请求频率限制上限
+"""速率限制与稳定性压测。
+
+扩展指标：成功率、QPS、延迟分位数（p50/p90/p99）、错误类别分布、
+固定 QPS 下的积压（backlog）以及阶梯式限流探测结果。
+
+用法：
+    uv run rate_limit_test.py --mode find_limit
+    uv run rate_limit_test.py --mode fixed_qps --rps 5 --duration 60
+    uv run rate_limit_test.py --mode single_test --requests 20 --workers 20
+    uv run rate_limit_test.py --mode single_test --json-out results/rate_limit.json
 """
 
+from __future__ import annotations
+
+import argparse
+import json
+import math
 import os
 import sys
-import time
 import threading
+import time
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from collections import deque
-from openai import OpenAI, RateLimitError, APIConnectionError, APIStatusError
+from datetime import datetime
+from pathlib import Path
+
+from dotenv import load_dotenv
 from loguru import logger
+from openai import OpenAI
 
-# 配置日志
-logger.remove()
-logger.add(sys.stderr, level="INFO", format="<green>{time:HH:mm:ss}</green> | <level>{message}</level>")
-logger.add("../logs/rate_limit_test_{time:YYYY-MM-DD}.log", level="DEBUG", rotation="10 MB", encoding="utf-8")
+from bench_metrics import classify_error, summarize
 
-# ========== 基本配置 ==========
-MY_API_KEY = os.getenv("MY_API_KEY")
-if not MY_API_KEY:
-    logger.error("请设置环境变量 MY_API_KEY")
-    sys.exit(1)
-API_BASE_URL = os.getenv("MY_API_BASE", "https://api.chat.csu.edu.cn/v1")
-MODEL_NAME = os.getenv("MY_MODEL", "DeepSeek-V4-Flash")
+BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(BASE_DIR / ".env")
+load_dotenv(BASE_DIR.parent / ".env")  # 根目录统一配置（本地优先）
 
-client = OpenAI(api_key=MY_API_KEY, base_url=API_BASE_URL)
+# 兼容旧变量名 MY_API_KEY / MY_API_BASE / MY_MODEL
+API_KEY = os.getenv("API_KEY") or os.getenv("MY_API_KEY", "")
+API_BASE_URL = (
+    os.getenv("API_BASE_URL")
+    or os.getenv("MY_API_BASE")
+    or "https://api.chat.csu.edu.cn/v1"
+)
+MODEL_NAME = os.getenv("MODEL_NAME") or os.getenv("MY_MODEL", "DeepSeek")
 
-# ========== 测试结果统计 ==========
+
+# ========== 统计 ==========
+
 class TestStats:
-    def __init__(self):
+    """线程安全的请求结果收集器。"""
+
+    def __init__(self) -> None:
         self.lock = threading.Lock()
         self.total_requests = 0
         self.success_count = 0
-        self.failed_count = 0
         self.rate_limited_count = 0
-        self.start_time = None
-        self.end_time = None
-        self.response_times = []
-        self.requests_timeline = deque()  # (timestamp, success/fail)
-    
-    def record_success(self, response_time: float):
+        self.failed_count = 0
+        self.latencies: list[float] = []
+        self.success_latencies: list[float] = []
+        self.error_classes: Counter[str] = Counter()
+        self.http_statuses: Counter[int] = Counter()
+        self.start_time: float | None = None
+        self.end_time: float | None = None
+        self.max_backlog = 0
+        self._inflight = 0
+
+    def request_started(self) -> None:
         with self.lock:
-            self.success_count += 1
-            self.total_requests += 1
-            self.response_times.append(response_time)
-            self.requests_timeline.append((time.time(), "success"))
-    
-    def record_rate_limit(self):
+            self._inflight += 1
+            self.max_backlog = max(self.max_backlog, self._inflight)
+
+    def request_finished(self) -> None:
         with self.lock:
-            self.rate_limited_count += 1
-            self.failed_count += 1
-            self.total_requests += 1
-            self.requests_timeline.append((time.time(), "rate_limited"))
-    
-    def record_error(self):
+            self._inflight -= 1
+
+    def record(self, result: dict) -> None:
         with self.lock:
-            self.failed_count += 1
             self.total_requests += 1
-            self.requests_timeline.append((time.time(), "error"))
+            self.latencies.append(result["latency"])
+            if result["status"] == "success":
+                self.success_count += 1
+                self.success_latencies.append(result["latency"])
+            elif result["status"] == "rate_limited":
+                self.rate_limited_count += 1
+                self.failed_count += 1
+                self.error_classes["rate_limit"] += 1
+            else:
+                self.failed_count += 1
+                self.error_classes[result.get("error_class") or "unknown"] += 1
+                if result.get("http_status"):
+                    self.http_statuses[int(result["http_status"])] += 1
+
+    def summary(self, target_rps: float | None = None) -> dict:
+        with self.lock:
+            total = self.total_requests
+            wall = (self.end_time - self.start_time) if self.start_time and self.end_time else 0.0
+            success_rate = self.success_count / total if total else 0.0
+            return {
+                "requests": total,
+                "success": self.success_count,
+                "failed": self.failed_count,
+                "rate_limited": self.rate_limited_count,
+                "success_rate": success_rate,
+                "wall": wall,
+                "qps": (total / wall) if wall > 0 else None,
+                "target_rps": target_rps,
+                "max_backlog": self.max_backlog,
+                "latency": summarize(self.latencies),
+                "latency_success": summarize(self.success_latencies),
+                "errors": dict(self.error_classes),
+                "http_statuses": {str(k): v for k, v in sorted(self.http_statuses.items())},
+            }
+
 
 stats = TestStats()
+stats_lock = threading.Lock()
 
-def make_request(request_id: int) -> dict:
-    """发送单次请求"""
-    start = time.time()
-    try:
-        resp = client.chat.completions.create(
-            model=MODEL_NAME,
-            messages=[{"role": "user", "content": f"压测请求 #{request_id}，请简短回复ok"}],
-            max_tokens=20,
-            temperature=0.1,
-            stream=False
-        )
-        response_time = time.time() - start
-        stats.record_success(response_time)
-        return {"id": request_id, "status": "success", "time": response_time}
-    except RateLimitError as e:
-        response_time = time.time() - start
-        stats.record_rate_limit()
-        return {"id": request_id, "status": "rate_limited", "time": response_time}
-    except (APIConnectionError, APIStatusError) as e:
-        response_time = time.time() - start
-        stats.record_error()
-        return {"id": request_id, "status": "error", "time": response_time, "error": str(e)}
-    except Exception as e:
-        response_time = time.time() - start
-        stats.record_error()
-        return {"id": request_id, "status": "error", "time": response_time, "error": str(e)}
 
-def run_concurrent_test(num_requests: int, max_workers: int):
-    """运行并发测试"""
-    logger.info(f"开始压测: {num_requests} 个请求, {max_workers} 并发线程")
-    stats.start_time = time.time()
-    
-    success_results = []
-    failed_results = []
-    
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = [executor.submit(make_request, i) for i in range(num_requests)]
-        
-        for future in as_completed(futures):
-            result = future.result()
-            if result["status"] == "success":
-                success_results.append(result)
-            else:
-                failed_results.append(result)
-    
-    stats.end_time = time.time()
-    total_time = stats.end_time - stats.start_time
-    
-    # 打印结果
-    logger.info("=" * 60)
-    logger.info("压测结果")
-    logger.info("=" * 60)
-    logger.info(f"总请求数: {stats.total_requests}")
-    logger.info(f"成功: {stats.success_count}")
-    logger.info(f"失败: {stats.failed_count}")
-    logger.info(f"速率限制: {stats.rate_limited_count}")
-    logger.info(f"总耗时: {total_time:.2f}s")
-    logger.info(f"平均 QPS: {stats.total_requests / total_time:.2f}")
-    
-    if success_results:
-        avg_time = sum(r["time"] for r in success_results) / len(success_results)
-        min_time = min(r["time"] for r in success_results)
-        max_time = max(r["time"] for r in success_results)
-        logger.info(f"成功请求平均响应时间: {avg_time:.3f}s")
-        logger.info(f"成功请求最小响应时间: {min_time:.3f}s")
-        logger.info(f"成功请求最大响应时间: {max_time:.3f}s")
-    
+def _reset_stats() -> TestStats:
+    global stats
+    with stats_lock:
+        stats = TestStats()
     return stats
 
-def find_rate_limit():
-    """
-    自动查找速率限制上限
-    使用递增并发策略
-    """
-    logger.info("开始自动探测速率限制...")
-    
-    # 测试配置
-    test_configs = [
-        (5, 5),
-        (10, 10),
-        (20, 20),
-        (30, 30),
-        (50, 50),
-        (100, 50),
-    ]
-    
+
+# ========== 单次请求 ==========
+
+def make_request(client: OpenAI, model: str, request_id: int, timeout: float) -> dict:
+    stats.request_started()
+    start = time.perf_counter()
+    try:
+        client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": f"压测请求 #{request_id}，请只回复 ok"}],
+            max_tokens=16,
+            temperature=0.1,
+            stream=False,
+            timeout=timeout,
+        )
+        result = {"id": request_id, "status": "success", "latency": time.perf_counter() - start}
+    except Exception as exc:  # noqa: BLE001 - 按 SDK 异常类别统计
+        latency = time.perf_counter() - start
+        error_class = classify_error(exc)
+        status = getattr(exc, "status_code", None)
+        result = {
+            "id": request_id,
+            "status": "rate_limited" if error_class == "rate_limit" else "error",
+            "latency": latency,
+            "error_class": error_class,
+            "http_status": status,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    finally:
+        stats.request_finished()
+
+    stats.record(result)
+    return result
+
+
+# ========== 场景 ==========
+
+def run_concurrent_burst(client: OpenAI, model: str, requests: int, workers: int, timeout: float) -> dict:
+    local = _reset_stats()
+    logger.info(f"突发并发: {requests} 请求 / {workers} 线程")
+    local.start_time = time.perf_counter()
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = [
+            executor.submit(make_request, client, model, i, timeout) for i in range(requests)
+        ]
+        for future in as_completed(futures):
+            future.result()
+    local.end_time = time.perf_counter()
+    return local.summary()
+
+
+def validate_config() -> bool:
+    if not API_KEY:
+        logger.error("请设置 API_KEY（或旧变量 MY_API_KEY），可写入 python/.env")
+        return False
+    return True
+
+
+def find_limit(
+    client: OpenAI,
+    model: str,
+    ladder: list[int],
+    cooldown: float,
+    threshold: float,
+    timeout: float,
+) -> dict:
+    logger.info(f"阶梯探测: {ladder}，成功率阈值 {threshold:.0%}，间隔 {cooldown:.0f}s")
     results = []
-    
-    for num_requests, max_workers in test_configs:
-        logger.info(f"\n--- 测试配置: {num_requests} 请求, {max_workers} 并发 ---")
-        
-        # 重置统计
-        global stats
-        stats = TestStats()
-        
-        run_concurrent_test(num_requests, max_workers)
-        
-        success_rate = stats.success_count / stats.total_requests if stats.total_requests > 0 else 0
-        results.append({
-            "requests": num_requests,
-            "workers": max_workers,
-            "success": stats.success_count,
-            "failed": stats.failed_count,
-            "rate_limited": stats.rate_limited_count,
-            "success_rate": success_rate,
-        })
-        
-        # 等待一段时间避免被限流影响下一次测试
-        logger.info("等待 30s 后继续下一轮测试...")
-        time.sleep(30)
-    
-    # 打印总结
-    logger.info("\n" + "=" * 80)
-    logger.info("压测总结")
-    logger.info("=" * 80)
-    logger.info(f"{'请求数':<10} {'并发数':<10} {'成功':<10} {'失败':<10} {'限流':<10} {'成功率':<10}")
-    logger.info("-" * 80)
-    for r in results:
+    limit_level = 0
+
+    for index, level in enumerate(ladder):
+        logger.info(f"\n--- 并发 {level} ---")
+        summary = run_concurrent_burst(client, model, level, level, timeout)
+        summary["level"] = level
+        results.append(summary)
+
         logger.info(
-            f"{r['requests']:<10} {r['workers']:<10} {r['success']:<10} "
-            f"{r['failed']:<10} {r['rate_limited']:<10} {r['success_rate']*100:.1f}%"
+            f"成功 {summary['success']}/{summary['requests']} "
+            f"({summary['success_rate']:.1%}), 限流 {summary['rate_limited']}, "
+            f"p50 {summary['latency']['p50']:.3f}s, p99 {summary['latency']['p99']:.3f}s"
         )
 
-def continuous_rps_test(duration_seconds: int, target_rps: float):
-    """
-    持续固定 QPS 测试
-    """
-    logger.info(f"开始持续 QPS 测试: {target_rps} 请求/秒, 持续 {duration_seconds} 秒")
-    
-    stats.start_time = time.time()
-    interval = 1.0 / target_rps
+        if summary["success_rate"] >= threshold:
+            limit_level = level
+        else:
+            logger.warning(f"并发 {level} 成功率低于阈值，停止探测")
+            break
+
+        if index < len(ladder) - 1:
+            logger.info(f"冷却 {cooldown:.0f}s 后继续...")
+            time.sleep(cooldown)
+
+    return {
+        "mode": "find_limit",
+        "threshold": threshold,
+        "ladder": ladder,
+        "limit_level": limit_level,
+        "results": results,
+    }
+
+
+def fixed_rps(
+    client: OpenAI,
+    model: str,
+    rps: float,
+    duration: float,
+    workers: int,
+    timeout: float,
+) -> dict:
+    local = _reset_stats()
+    interval = 1.0 / rps
+    workers = workers or max(4, min(128, math.ceil(rps * 2)))
+    logger.info(f"固定 QPS: {rps}/s，持续 {duration:.0f}s，线程 {workers}")
+
+    local.start_time = time.perf_counter()
+    deadline = local.start_time + duration
+    next_slot = local.start_time
     request_id = 0
-    
-    with ThreadPoolExecutor(max_workers=int(target_rps * 2)) as executor:
-        while time.time() - stats.start_time < duration_seconds:
-            loop_start = time.time()
-            futures = [executor.submit(make_request, request_id)]
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        pending = []
+        while True:
+            now = time.perf_counter()
+            if now >= deadline:
+                break
+            if next_slot > now:
+                time.sleep(next_slot - now)
+            pending.append(executor.submit(make_request, client, model, request_id, timeout))
             request_id += 1
-            
-            for future in as_completed(futures):
-                pass  # 结果已记录在 stats 中
-            
-            # 控制请求速率
-            elapsed = time.time() - loop_start
-            sleep_time = max(0, interval - elapsed)
-            if sleep_time > 0:
-                time.sleep(sleep_time)
-    
-    total_time = time.time() - stats.start_time
-    
+            next_slot += interval
+
+            if request_id % 50 == 0:
+                logger.info(f"已提交 {request_id} 请求，当前 QPS≈{request_id / (time.perf_counter() - local.start_time):.2f}")
+
+        for future in as_completed(pending):
+            future.result()
+
+    local.end_time = time.perf_counter()
+    return local.summary(target_rps=rps)
+
+
+# ========== 输出 ==========
+
+def _fmt(value, digits: int = 3) -> str:
+    if value is None:
+        return "-"
+    if isinstance(value, float):
+        return f"{value:.{digits}f}"
+    return str(value)
+
+
+def print_summary(summary: dict) -> None:
+    latency = summary["latency"]
     logger.info("=" * 60)
-    logger.info("持续 QPS 测试结果")
+    logger.info("结果汇总")
     logger.info("=" * 60)
-    logger.info(f"目标 QPS: {target_rps}")
-    logger.info(f"实际 QPS: {stats.total_requests / total_time:.2f}")
-    logger.info(f"总请求: {stats.total_requests}")
-    logger.info(f"成功: {stats.success_count}")
-    logger.info(f"失败: {stats.failed_count}")
-    logger.info(f"限流: {stats.rate_limited_count}")
+    logger.info(f"请求数: {summary['requests']} | 成功: {summary['success']} | "
+                f"失败: {summary['failed']} | 限流: {summary['rate_limited']}")
+    logger.info(f"成功率: {summary['success_rate']:.1%} | 墙钟: {_fmt(summary['wall'], 2)}s | "
+                f"QPS: {_fmt(summary['qps'], 2)}")
+    logger.info(f"延迟: p50 {_fmt(latency['p50'])}s | p90 {_fmt(latency['p90'])}s | "
+                f"p99 {_fmt(latency['p99'])}s | mean {_fmt(latency['mean'])}s")
+    success_latency = summary.get("latency_success") or {}
+    if success_latency.get("n"):
+        logger.info(f"成功请求延迟: p50 {_fmt(success_latency['p50'])}s | "
+                    f"p99 {_fmt(success_latency['p99'])}s | n={success_latency['n']}")
+    if summary["errors"]:
+        logger.info(f"错误分布: {summary['errors']}")
+    if summary["http_statuses"]:
+        logger.info(f"HTTP 状态: {summary['http_statuses']}")
+
+
+def build_payload(mode: str, summary: dict) -> dict:
+    return {
+        "meta": {
+            "timestamp": datetime.now().astimezone().isoformat(timespec="seconds"),
+            "base_url": API_BASE_URL,
+            "model": MODEL_NAME,
+            "mode": mode,
+        },
+        "summary": summary,
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="CSU AI API 速率限制压测")
+    parser.add_argument("--mode", choices=["find_limit", "fixed_qps", "single_test"],
+                        default="find_limit")
+    parser.add_argument("--requests", type=int, default=20)
+    parser.add_argument("--workers", type=int, default=0)
+    parser.add_argument("--duration", type=float, default=60)
+    parser.add_argument("--rps", type=float, default=5.0)
+    parser.add_argument("--ladder", default="5,10,20,30,50,100")
+    parser.add_argument("--cooldown", type=float, default=30)
+    parser.add_argument("--threshold", type=float, default=0.8)
+    parser.add_argument("--timeout", type=float, default=60)
+    parser.add_argument("--log-dir", default=str(BASE_DIR.parent / "logs"))
+    parser.add_argument("--json-out", default="")
+    args = parser.parse_args(argv)
+
+    log_dir = Path(args.log_dir)
+    log_dir.mkdir(parents=True, exist_ok=True)
+    logger.remove()
+    logger.add(sys.stderr, level="INFO",
+               format="<green>{time:HH:mm:ss}</green> | <level>{message}</level>")
+    logger.add(log_dir / "rate_limit_test_{time:YYYY-MM-DD}.log",
+               level="DEBUG", rotation="10 MB", encoding="utf-8")
+
+    if not validate_config():
+        return 2
+    if args.rps <= 0 or args.duration <= 0:
+        logger.error("--rps 与 --duration 必须大于 0")
+        return 2
+
+    client = OpenAI(api_key=API_KEY, base_url=API_BASE_URL, timeout=args.timeout, max_retries=0)
+
+    if args.mode == "single_test":
+        summary = run_concurrent_burst(
+            client, MODEL_NAME, args.requests, args.workers or args.requests, args.timeout
+        )
+        payload = build_payload("single_test", summary)
+        print_summary(summary)
+    elif args.mode == "fixed_qps":
+        summary = fixed_rps(client, MODEL_NAME, args.rps, args.duration, args.workers, args.timeout)
+        payload = build_payload("fixed_qps", summary)
+        print_summary(summary)
+    else:
+        ladder = [int(x) for x in args.ladder.split(",") if x.strip()]
+        payload = find_limit(
+            client, MODEL_NAME, ladder, args.cooldown, args.threshold, args.timeout
+        )
+        logger.info("\n阶梯结果:")
+        logger.info(f"{'并发':<8}{'成功':<8}{'限流':<8}{'成功率':<10}{'p50':<10}{'p99':<10}")
+        for row in payload["results"]:
+            logger.info(
+                f"{row['level']:<8}{row['success']:<8}{row['rate_limited']:<8}"
+                f"{row['success_rate']:<10.1%}{_fmt(row['latency']['p50']):<10}"
+                f"{_fmt(row['latency']['p99']):<10}"
+            )
+        logger.info(f"探测到的稳定并发上限: {payload['limit_level']}")
+
+    if args.json_out:
+        out_path = Path(args.json_out)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        logger.info(f"JSON: {out_path}")
+
+    return 0
+
 
 if __name__ == "__main__":
-    import argparse
-    
-    parser = argparse.ArgumentParser(description="API 速率限制压测工具")
-    parser.add_argument(
-        "--mode",
-        choices=["find_limit", "fixed_qps", "single_test"],
-        default="find_limit",
-        help="压测模式"
-    )
-    parser.add_argument("--requests", type=int, default=20, help="单次测试请求数")
-    parser.add_argument("--workers", type=int, default=20, help="并发线程数")
-    parser.add_argument("--duration", type=int, default=60, help="持续测试时间(秒)")
-    parser.add_argument("--rps", type=float, default=5.0, help="目标 QPS")
-    
-    args = parser.parse_args()
-    
-    if args.mode == "find_limit":
-        find_rate_limit()
-    elif args.mode == "fixed_qps":
-        continuous_rps_test(args.duration, args.rps)
-    elif args.mode == "single_test":
-        run_concurrent_test(args.requests, args.workers)
+    sys.exit(main())

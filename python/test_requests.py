@@ -11,11 +11,13 @@ from pathlib import Path
 from dotenv import load_dotenv
 import requests
 
-load_dotenv(Path(__file__).parent / ".env")
+BASE_DIR = Path(__file__).parent
+load_dotenv(BASE_DIR / ".env")
+load_dotenv(BASE_DIR.parent / ".env")
 
 api_key = os.getenv("API_KEY", "")
 base_url = os.getenv("API_BASE_URL", "https://api.chat.csu.edu.cn/v1")
-model = os.getenv("MODEL_NAME", "DeepSeek-V4-Flash")
+model = os.getenv("MODEL_NAME", "DeepSeek")
 
 if not api_key:
     print("错误: API_KEY 未设置")
@@ -50,13 +52,19 @@ def test_chat_completions():
         full_text = ""
         start = time.time()
         first_token = None
+        usage = None
 
         for line in resp.iter_lines():
             if line:
                 text = line.decode("utf-8")
                 if text.startswith("data: ") and text != "data: [DONE]":
                     chunk = json.loads(text[6:])
-                    content = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                    if chunk.get("usage"):
+                        usage = chunk["usage"]
+                    choices = chunk.get("choices") or []
+                    if not choices:
+                        continue
+                    content = (choices[0].get("delta") or {}).get("content") or ""
                     if content:
                         if first_token is None:
                             first_token = time.time() - start
@@ -64,7 +72,7 @@ def test_chat_completions():
                         print(content, end="", flush=True)
 
         elapsed = time.time() - start
-        print(f"\n✅ 成功 | TTFT: {first_token:.3f}s | 总耗时: {elapsed:.3f}s")
+        print(f"\n✅ 成功 | TTFT: {first_token:.3f}s | 总耗时: {elapsed:.3f}s | Tokens: {usage.get('total_tokens', 'N/A') if usage else 'N/A'}")
         return True
 
     except requests.exceptions.HTTPError as e:

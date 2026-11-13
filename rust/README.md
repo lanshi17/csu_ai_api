@@ -11,15 +11,14 @@ rust/
 │   ├── main.rs          # 测试运行入口
 │   ├── config.rs        # 配置加载（.env）
 │   └── http_client.rs   # reqwest HTTP 客户端
-├── .env.example         # 环境变量模板
 └── target/              # 编译输出
 ```
 
 ## 快速开始
 
 ```bash
-# 1. 复制并编辑环境变量
-cp .env.example .env
+# 1. 复制并编辑环境变量（模板在仓库根目录）
+cp ../.env.example .env
 # 编辑 .env，填入你的 API_KEY
 
 # 2. 运行
@@ -32,17 +31,17 @@ cargo build --release
 
 ## 测试结果
 
-> 测试时间: 2026-05-12 | 模型: DeepSeek-V4-Flash | Base URL: https://api.chat.csu.edu.cn/v1
+> 测试时间: 2026-11-13 | 模型: DeepSeek | Base URL: https://api.chat.csu.edu.cn/v1
 
 | 测试项 | 结果 | 耗时 |
 |--------|------|------|
 | HTTP Models List | ✅ | - |
-| HTTP Chat (非流式) | ✅ | 0.810s |
-| HTTP Chat (流式) | ✅ | TTFT: 0.712s / 总计: 0.724s |
+| HTTP Chat (非流式) | ✅ | 0.756s |
+| HTTP Chat (流式) | ✅ | TTFT: 0.541s / 总计: 0.550s |
 
 **全部 3/3 通过 ✅**
 
-可用模型 (7 个): `bge-m3`, `bge-reranker-large`, `deepseek-ai/DeepSeek-V4-Flash`, `deepseek-v3`, `deepseek-v3-thinking`, `DeepSeek-V4-Flash`, `Qwen3.6-35B-A3B`
+可用模型 (5 个): `DeepSeek`, `Embedding`, `GLM`, `Qwen`, `Reranker`
 
 ## 测试内容
 

@@ -1,0 +1,294 @@
+{
+  "version": "1.2.0",
+  "updated": "2026-11-13",
+  "description": "CSU AI API 基准用例集：覆盖连通性、长文生成、结构化输出、代码生成、推理、长上下文、多轮对话、多语言、向量化、重排序与深度推理十一个维度。",
+  "dimensions": {
+    "connectivity": {
+      "name": "基础连通",
+      "description": "最短请求验证鉴权、路由与首 token 时延，作为其他维度的基线。"
+    },
+    "long_form": {
+      "name": "长文生成",
+      "description": "长输出场景，观察生成速率、TPOT 与长尾延迟。"
+    },
+    "structured": {
+      "name": "结构化输出",
+      "description": "JSON object / strict JSON Schema 的合法性与字段完整性。"
+    },
+    "code": {
+      "name": "代码生成",
+      "description": "Python 代码可解析性与 SQL 结构关键词覆盖。"
+    },
+    "reasoning": {
+      "name": "多步推理",
+      "description": "需要算术推导的问答，校验最终结果而非过程。"
+    },
+    "long_context": {
+      "name": "长上下文检索",
+      "description": "在填充文本中定位指定暗号，验证上下文窗口与注意力。"
+    },
+    "multi_turn": {
+      "name": "多轮上下文",
+      "description": "固定前序对话后追问，校验实体记忆与一致性。"
+    },
+    "multilingual": {
+      "name": "多语言",
+      "description": "中译英与中英混排，校验语种切换与禁止回显原文。"
+    },
+    "embedding": {
+      "name": "向量化",
+      "description": "Embedding 接口的返回结构、维度一致性与耗时。"
+    },
+    "rerank": {
+      "name": "重排序",
+      "description": "Reranker 接口的相关性分数单调性与首位命中。"
+    },
+    "thinking": {
+      "name": "深度推理",
+      "description": "开启 thinking 后的推理 token 开销、延迟与最终答案正确性。"
+    }
+  },
+  "cases": [
+    {
+      "id": "zh_short_qa",
+      "dimension": "connectivity",
+      "tags": ["zh", "short", "smoke"],
+      "suites": ["smoke", "full"],
+      "messages": [
+        {"role": "user", "content": "你好，请回复'连通成功'"}
+      ],
+      "max_tokens": 64,
+      "temperature": 0.2,
+      "checks": [
+        {"type": "contains_any", "values": ["连通成功"]}
+      ]
+    },
+    {
+      "id": "en_short_qa",
+      "dimension": "connectivity",
+      "tags": ["en", "short"],
+      "suites": ["full"],
+      "messages": [
+        {"role": "user", "content": "Reply with exactly one word: CONNECTED"}
+      ],
+      "max_tokens": 32,
+      "temperature": 0.1,
+      "checks": [
+        {"type": "contains_any", "values": ["CONNECTED"]}
+      ]
+    },
+    {
+      "id": "mixed_language",
+      "dimension": "multilingual",
+      "tags": ["zh", "en", "mixed"],
+      "suites": ["smoke", "full"],
+      "messages": [
+        {"role": "user", "content": "请用一句中文和一句英文说明什么是 API，中英文各一行。"}
+      ],
+      "max_tokens": 200,
+      "temperature": 0.3,
+      "checks": [
+        {"type": "regex", "pattern": "[\\u4e00-\\u9fa5]"},
+        {"type": "regex", "pattern": "[A-Za-z]{3,}"}
+      ]
+    },
+    {
+      "id": "zh_long_article",
+      "dimension": "long_form",
+      "tags": ["zh", "long_output"],
+      "suites": ["smoke", "full"],
+      "messages": [
+        {"role": "system", "content": "你是一位科技专栏作者。"},
+        {"role": "user", "content": "以《人工智能在医疗领域的应用》为题写一篇不少于 600 字的中文短文，包含标题和三个小节。"}
+      ],
+      "max_tokens": 1200,
+      "temperature": 0.5,
+      "checks": [
+        {"type": "min_chars", "value": 500},
+        {"type": "contains_all", "values": ["人工智能", "医疗"]}
+      ]
+    },
+    {
+      "id": "json_object",
+      "dimension": "structured",
+      "tags": ["json_object"],
+      "suites": ["smoke", "full"],
+      "messages": [
+        {"role": "system", "content": "你是一个 JSON 生成器，只返回合法 JSON。"},
+        {"role": "user", "content": "生成一个用户信息对象：姓名张三，年龄25，邮箱 zhangsan@example.com，爱好读书和游泳。字段名必须使用英文 name、age、email、hobbies。只返回 JSON 对象。"}
+      ],
+      "max_tokens": 400,
+      "temperature": 0.0,
+      "response_format": {"type": "json_object"},
+      "checks": [
+        {"type": "json_valid"},
+        {"type": "json_keys", "keys": ["name", "age", "email"]}
+      ]
+    },
+    {
+      "id": "json_schema_strict",
+      "dimension": "structured",
+      "tags": ["json_schema", "strict"],
+      "suites": ["full"],
+      "messages": [
+        {"role": "system", "content": "你是一个 JSON 生成器，严格按照 schema 返回。"},
+        {"role": "user", "content": "生成用户信息：姓名李四，年龄30，邮箱 lisi@example.com，爱好读书、游泳、编程。"}
+      ],
+      "max_tokens": 400,
+      "temperature": 0.0,
+      "response_format": {
+        "type": "json_schema",
+        "json_schema": {
+          "name": "user_info",
+          "strict": true,
+          "schema": {
+            "type": "object",
+            "properties": {
+              "name": {"type": "string"},
+              "age": {"type": "integer"},
+              "email": {"type": "string"},
+              "hobbies": {"type": "array", "items": {"type": "string"}}
+            },
+            "required": ["name", "age", "email", "hobbies"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "checks": [
+        {"type": "json_valid"},
+        {"type": "json_keys", "keys": ["name", "age", "email", "hobbies"]}
+      ]
+    },
+    {
+      "id": "python_function",
+      "dimension": "code",
+      "tags": ["python", "code"],
+      "suites": ["smoke", "full"],
+      "messages": [
+        {"role": "user", "content": "写一个 Python 函数 normalize_phone(number: str) -> str：去掉空格、连字符和 +86 前缀，返回 11 位手机号。只输出一个 python 代码块。"}
+      ],
+      "max_tokens": 600,
+      "temperature": 0.2,
+      "checks": [
+        {"type": "python_valid"},
+        {"type": "contains_all", "values": ["def normalize_phone", "return"]}
+      ]
+    },
+    {
+      "id": "sql_query",
+      "dimension": "code",
+      "tags": ["sql"],
+      "suites": ["full"],
+      "messages": [
+        {"role": "user", "content": "orders 表包含 user_id、amount、created_at。写一条 SQL：统计每个 user_id 的订单数 cnt，并按 cnt 降序排列。只输出 SQL。"}
+      ],
+      "max_tokens": 300,
+      "temperature": 0.1,
+      "checks": [
+        {"type": "contains_all", "values": ["SELECT", "GROUP BY", "ORDER BY"]}
+      ]
+    },
+    {
+      "id": "math_word_problem",
+      "dimension": "reasoning",
+      "tags": ["math", "multi_step"],
+      "suites": ["smoke", "full"],
+      "messages": [
+        {"role": "user", "content": "某车间每天生产 17 箱零件，每箱 23 个，其中 20 个是次品。每天合格品有多少个？只给出最终数字。"}
+      ],
+      "max_tokens": 300,
+      "temperature": 0.0,
+      "checks": [
+        {"type": "contains_any", "values": ["371"]}
+      ]
+    },
+    {
+      "id": "needle_retrieval",
+      "dimension": "long_context",
+      "tags": ["needle", "long_input"],
+      "suites": ["smoke", "full"],
+      "build": {
+        "type": "needle",
+        "needle": "PURPLE-7391",
+        "filler_sentences": 120,
+        "question": "上文提到的暗号是什么？只输出暗号本身。"
+      },
+      "max_tokens": 64,
+      "temperature": 0.0,
+      "checks": [
+        {"type": "contains_any", "values": ["PURPLE-7391"]}
+      ]
+    },
+    {
+      "id": "multi_turn_profile",
+      "dimension": "multi_turn",
+      "tags": ["zh", "memory"],
+      "suites": ["smoke", "full"],
+      "messages": [
+        {"role": "user", "content": "我叫林川，在长沙做后端开发。"},
+        {"role": "assistant", "content": "好的，我记住了：你叫林川，在长沙做后端开发。"},
+        {"role": "user", "content": "根据上文回答：我叫什么？在哪个城市工作？"}
+      ],
+      "max_tokens": 100,
+      "temperature": 0.0,
+      "checks": [
+        {"type": "contains_all", "values": ["林川", "长沙"]}
+      ]
+    },
+    {
+      "id": "translate_zh2en",
+      "dimension": "multilingual",
+      "tags": ["zh", "en", "translation"],
+      "suites": ["smoke", "full"],
+      "messages": [
+        {"role": "user", "content": "把这句话翻译成英文，只输出译文：机器学习模型需要大量高质量的训练数据。"}
+      ],
+      "max_tokens": 200,
+      "temperature": 0.0,
+      "checks": [
+        {"type": "contains_any", "values": ["machine learning"]},
+        {"type": "not_contains", "values": ["机器学习"]}
+      ]
+    },
+    {
+      "id": "embed_text",
+      "dimension": "embedding",
+      "tags": ["embedding"],
+      "suites": ["smoke", "full"],
+      "type": "embedding",
+      "model": "Embedding",
+      "input": ["中南大学", "machine learning"]
+    },
+    {
+      "id": "rerank_docs",
+      "dimension": "rerank",
+      "tags": ["rerank"],
+      "suites": ["full"],
+      "type": "rerank",
+      "model": "Reranker",
+      "query": "什么是机器学习？",
+      "documents": [
+        "机器学习是人工智能的分支。",
+        "今天天气很好。",
+        "深度学习使用神经网络。"
+      ],
+      "top_n": 3,
+      "top_index": 0
+    },
+    {
+      "id": "math_thinking",
+      "dimension": "thinking",
+      "tags": ["thinking", "math"],
+      "suites": ["full"],
+      "reasoning_effort": "default",
+      "messages": [
+        {"role": "user", "content": "某车间每天生产 17 箱零件，每箱 23 个，其中 20 个是次品。每天合格品有多少个？先推理再给出最终数字。"}
+      ],
+      "max_tokens": 1024,
+      "temperature": 0.0,
+      "checks": [
+        {"type": "contains_any", "values": ["371"]}
+      ]
+    }
+  ]
+}

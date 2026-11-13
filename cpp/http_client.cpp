@@ -86,7 +86,9 @@ std::string HttpClient::http_get(const std::string& url, int& status_code) {
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
 
     CURLcode res = curl_easy_perform(curl);
-    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status_code);
+    long status_long = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status_long);
+    status_code = static_cast<int>(status_long);
 
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
@@ -113,7 +115,9 @@ std::string HttpClient::http_post(const std::string& url, const std::string& bod
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 60L);
 
     CURLcode res = curl_easy_perform(curl);
-    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status_code);
+    long status_long = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status_long);
+    status_code = static_cast<int>(status_long);
 
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
@@ -194,7 +198,7 @@ bool HttpClient::test_non_stream() {
         }
 
         auto j = json::parse(resp);
-        std::string content = j["choices"][0]["message"]["content"];
+        std::string content = j["choices"][0]["message"]["content"].get<std::string>();
         double elapsed = std::chrono::duration<double>(
             std::chrono::steady_clock::now() - start).count();
 

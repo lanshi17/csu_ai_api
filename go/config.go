@@ -16,7 +16,9 @@ type Config struct {
 
 // LoadConfig 加载配置
 func LoadConfig() *Config {
-	_ = godotenv.Load()
+	if err := godotenv.Load(); err != nil {
+		_ = godotenv.Load("../.env") // 回退到仓库根目录统一配置
+	}
 
 	apiKey := os.Getenv("API_KEY")
 	if apiKey == "" {
@@ -31,7 +33,7 @@ func LoadConfig() *Config {
 
 	model := os.Getenv("MODEL_NAME")
 	if model == "" {
-		model = "DeepSeek-V4-Flash"
+		model = "DeepSeek"
 	}
 
 	return &Config{

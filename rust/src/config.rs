@@ -20,7 +20,7 @@ impl Config {
             .unwrap_or_else(|_| "https://api.chat.csu.edu.cn/v1".to_string());
 
         let model = env::var("MODEL_NAME")
-            .unwrap_or_else(|_| "DeepSeek-V4-Flash".to_string());
+            .unwrap_or_else(|_| "DeepSeek".to_string());
 
         Config {
             api_key,

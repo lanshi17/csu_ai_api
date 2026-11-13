@@ -21,8 +21,10 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.live import Live
 
-# 加载 .env 文件
-load_dotenv(Path(__file__).parent / ".env")
+# 加载 .env 文件（优先脚本目录，回退到仓库根目录）
+BASE_DIR = Path(__file__).parent
+load_dotenv(BASE_DIR / ".env")
+load_dotenv(BASE_DIR.parent / ".env")
 
 console = Console()
 
@@ -65,7 +67,7 @@ class Config:
     PROVIDER = os.getenv("API_PROVIDER", "openai").lower()
     API_KEY = os.getenv("API_KEY", "")
     API_BASE_URL = os.getenv("API_BASE_URL", "https://api.chat.csu.edu.cn/v1")
-    MODEL_NAME = os.getenv("MODEL_NAME", "DeepSeek-V4-Flash")
+    MODEL_NAME = os.getenv("MODEL_NAME", "DeepSeek")
     SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT", "你是一个有问必答的AI助手。")
     MAX_TOKENS = int(os.getenv("MAX_TOKENS", "1024"))
     TEMPERATURE = float(os.getenv("TEMPERATURE", "0.7"))

@@ -12,7 +12,9 @@ from typing import List
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 
-load_dotenv(Path(__file__).parent / ".env")
+BASE_DIR = Path(__file__).parent
+load_dotenv(BASE_DIR / ".env")
+load_dotenv(BASE_DIR.parent / ".env")
 
 from openai import OpenAI
 from langchain_openai import ChatOpenAI
@@ -20,7 +22,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 api_key = os.getenv("API_KEY", "")
 base_url = os.getenv("API_BASE_URL", "https://api.chat.csu.edu.cn/v1")
-model = os.getenv("MODEL_NAME", "DeepSeek-V4-Flash")
+model = os.getenv("MODEL_NAME", "DeepSeek")
 
 if not api_key:
     print("错误: API_KEY 未设置")

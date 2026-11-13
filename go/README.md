@@ -12,15 +12,14 @@ go/
 ├── openai_client.go     # OpenAI Go SDK Chat Completions 实现
 ├── responses_client.go  # OpenAI Go SDK Responses API 实现
 ├── go.mod               # Go 模块定义
-├── go.sum               # 依赖校验
-└── .env.example         # 环境变量模板
+└── go.sum               # 依赖校验
 ```
 
 ## 快速开始
 
 ```bash
-# 1. 复制并编辑环境变量
-cp .env.example .env
+# 1. 复制并编辑环境变量（模板在仓库根目录）
+cp ../.env.example .env
 # 编辑 .env，填入你的 API_KEY
 
 # 2. 运行测试
@@ -33,22 +32,22 @@ go build -o csu_ai_test .
 
 ## 测试结果
 
-> 测试时间: 2026-05-12 | 模型: DeepSeek-V4-Flash | Base URL: https://api.chat.csu.edu.cn/v1
+> 测试时间: 2026-11-13 | 模型: DeepSeek | Base URL: https://api.chat.csu.edu.cn/v1
 
 | 测试项 | 结果 | 耗时 |
 |--------|------|------|
 | OpenAI SDK Models List | ✅ | - |
-| OpenAI SDK invoke() | ✅ | 0.666s |
-| OpenAI SDK stream() | ✅ | TTFT: 0.712s / 总计: 0.713s |
-| OpenAI SDK Responses invoke() | ✅ | 0.693s |
-| OpenAI SDK Responses stream() | ✅ | TTFT: 0.811s / 总计: 0.811s |
+| OpenAI SDK invoke() | ✅ | 0.806s |
+| OpenAI SDK stream() | ✅ | TTFT: 0.585s / 总计: 0.615s |
+| OpenAI SDK Responses invoke() | ✅ | 0.533s |
+| OpenAI SDK Responses stream() | ✅ | TTFT: 0.551s / 总计: 0.608s |
 | HTTP Models List | ✅ | - |
-| HTTP Chat (非流式) | ✅ | 0.588s |
-| HTTP Chat (流式) | ✅ | TTFT: 0.888s / 总计: 0.888s |
+| HTTP Chat (非流式) | ✅ | 0.487s |
+| HTTP Chat (流式) | ✅ | TTFT: 0.873s / 总计: 0.873s |
 
 **全部 8/8 通过 ✅**
 
-可用模型 (7 个): `bge-m3`, `bge-reranker-large`, `deepseek-ai/DeepSeek-V4-Flash`, `deepseek-v3`, `deepseek-v3-thinking`, `DeepSeek-V4-Flash`, `Qwen3.6-35B-A3B`
+可用模型 (5 个): `DeepSeek`, `Embedding`, `GLM`, `Qwen`, `Reranker`
 
 ## 测试内容
 
